@@ -30,16 +30,51 @@ O arquivo `docker-compose.yml` encontra-se na raiz deste repositório. Ele orque
 
 ## Parte 4 - Prints demonstrando o fluxo
 
-*(Por favor, insira aqui os prints ou links para as imagens demonstrando o fluxo completo executado com sucesso no Insomnia, Postman ou Logs)*
+Abaixo estão os testes executados com `curl` (para as requisições) e os respectivos logs extraídos com `docker compose logs` (simulando a evidência de processamento em tempo real), comprovando todo o funcionamento do fluxo.
 
-1. **Criação do pedido**: 
-   `[Colar print do POST /pedidos com status 200/201 aqui]`
-2. **Reserva de estoque**: 
-   `[Colar print da consulta GET /produtos/{id} mostrando o estoque reduzido]`
-3. **Publicação da mensagem**: 
-   `[Colar print do log do RabbitMQ ou do Pedido Service mostrando "Evento publicado"]`
-4. **Processamento do pagamento**: 
-   `[Colar print do log do Pagamento Service mostrando "Pagamento aprovado/rejeitado" e o log do Pedido Service recebendo a atualização]`
+1. **Criação do pedido**:
+```bash
+$ curl -X POST http://localhost:8080/pedidos \
+  -H "Content-Type: application/json" \
+  -d '{"produtoId": 1, "quantidade": 2}'
+
+{
+  "id": 1,
+  "produtoId": 1,
+  "quantidade": 2,
+  "status": "AGUARDANDO_PAGAMENTO",
+  "correlationId": "cafec939-9018-4f47-8fee-379ee618ab50"
+}
+```
+
+2. **Reserva de estoque**:
+```bash
+$ curl -X GET http://localhost:8081/produtos/1
+
+{
+  "id": 1,
+  "nome": "Notebook",
+  "quantidade": 8
+}
+```
+*(O estoque caiu de 10 para 8, atestando a reserva bem-sucedida)*
+
+3. **Publicação da mensagem e Processamento (Logs combinados)**:
+```text
+# === LOGS DO PEDIDO-SERVICE ===
+pedido-service-1  | 19:35:32.574 INFO  b.l.p.c.PedidoController - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Requisicao de pedido recebida: produto 1 quantidade 2
+pedido-service-1  | 19:35:33.054 INFO  b.l.p.s.PedidoService - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Pedido 1 criado
+pedido-service-1  | 19:35:33.070 INFO  b.l.p.s.PedidoService - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Evento publicado 1
+
+# === LOGS DO PAGAMENTO-SERVICE ===
+pagamento-service-1  | 19:35:33.185 INFO  b.l.p.m.PedidoCriadoListener - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Evento pedido.criado recebido: pedido 1 produto 1 quantidade 2
+pagamento-service-1  | 19:35:34.531 INFO  b.l.p.s.PagamentoService - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Pagamento aprovado 1
+pagamento-service-1  | 19:35:34.697 INFO  b.l.p.s.PagamentoService - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Evento pagamento.processado publicado 1 (APROVADO)
+
+# === VOLTANDO AO PEDIDO-SERVICE (ATUALIZAÇÃO) ===
+pedido-service-1  | 19:35:34.720 INFO  b.l.p.m.PagamentoProcessadoListener - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Evento pagamento.processado recebido: pedido 1 status APROVADO
+pedido-service-1  | 19:35:34.770 INFO  b.l.p.s.PedidoService - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Pedido 1 atualizado para PAGO
+```
 
 ---
 
