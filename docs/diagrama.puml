@@ -1,0 +1,34 @@
+@startuml
+!theme plain
+skinparam componentStyle uml2
+
+actor Cliente
+
+package "Microsserviços" {
+  [Pedido Service] as Pedido
+  [Estoque Service] as Estoque
+  [Pagamento Service] as Pagamento
+}
+
+database "pedido-db" as PedidoDB
+database "estoque-db" as EstoqueDB
+database "pagamento-db" as PagamentoDB
+
+queue "RabbitMQ" as Broker
+
+Cliente --> Pedido : POST /pedidos\n(REST)
+Pedido --> Estoque : PUT /produtos/{id}/reservar\n(REST Síncrono)
+
+Pedido --> PedidoDB : Salva Pedido\n(AGUARDANDO_PAGAMENTO)
+Estoque --> EstoqueDB : Atualiza Quantidade
+
+Pedido --> Broker : Publica Evento\n"pedido.criado"
+Broker --> Pagamento : Consome Evento\n"pedido.criado"
+
+Pagamento --> PagamentoDB : Salva Status Pagamento\n(APROVADO/REJEITADO)
+Pagamento --> Broker : Publica Evento\n"pagamento.processado"
+
+Broker --> Pedido : Consome Evento\n"pagamento.processado"
+Pedido --> PedidoDB : Atualiza Status\n(PAGO/REJEITADO)
+
+@enduml
