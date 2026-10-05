@@ -41,7 +41,7 @@ docker compose down -v
 
 ---
 
-# Roteiro de testes (com o que printar)
+# Roteiro de testes
 
 Os comandos usam cURL (Linux/macOS/Git Bash). No PowerShell use `curl.exe` no lugar de `curl`.
 
@@ -67,7 +67,7 @@ docker compose exec pagamento-db psql -U pagamento -c "select * from pagamento;"
 docker compose exec pedido-db   psql -U pedido    -c "select * from pedido;"
 ```
 
-Prints: resposta 201 do POST (com o header `X-Correlation-Id`), estoque antes/depois, logs dos 3 serviços filtrados pelo correlationId, `select` da tabela pagamento.
+resposta 201 do POST (com o header `X-Correlation-Id`), estoque antes/depois, logs dos 3 serviços filtrados pelo correlationId, `select` da tabela pagamento.
 
 Erros que não podem criar pedido nem publicar evento:
 
@@ -189,7 +189,7 @@ O arquivo `docker-compose.yml` encontra-se na raiz deste repositório. Ele orque
 
 ---
 
-## Parte 4 - Prints demonstrando o fluxo
+## Parte 4 -  demonstrando o fluxo
 
 Abaixo estão os testes executados com `curl` e os respectivos logs extraídos com `docker compose logs`, comprovando todo o funcionamento do fluxo.
 
