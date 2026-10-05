@@ -55,6 +55,8 @@ curl -i -X PUT localhost:8081/produtos/1/reservar -H "Content-Type: application/
 curl -i -X PUT localhost:8081/produtos/99/reservar -H "Content-Type: application/json" -d '{"quantidade":1}'    # 404 Produto inexistente
 ```
 
+Quando a chamada traz o header `X-Correlation-Id` (o Pedido Service sempre envia), `reservar` e `liberar` são idempotentes: o Estoque registra a reserva na tabela `reserva` e uma chamada repetida com o mesmo correlationId não baixa nem devolve o estoque de novo. Por isso, se a reserva der timeout, o Pedido pode pedir a liberação com segurança: só é devolvido o que foi de fato reservado.
+
 ## Etapas 2, 3 e 7 — Criar pedido (fluxo completo)
 
 ```bash
@@ -161,7 +163,7 @@ curl -s localhost:8080/pedidos                     # deve haver PAGO e REJEITADO
 docker compose logs pedido-service | grep "atualizado para"
 ```
 
-Pedidos REJEITADOS devolvem a quantidade ao estoque (log `Estoque do pedido X devolvido`).
+Pedidos REJEITADOS devolvem a quantidade ao estoque (log `Estoque do pedido X devolvido`). Se o Estoque estiver fora do ar, o pedido continua `AGUARDANDO_PAGAMENTO` e o evento é reentregue (3 tentativas, depois `pagamento.processado.dlq`).
 
 ---
 
@@ -191,29 +193,33 @@ O arquivo `docker-compose.yml` encontra-se na raiz deste repositório. Ele orque
 
 ## Parte 4 - Prints demonstrando o fluxo
 
-**1. Estoque antes do pedido**
+Todos os prints vêm de uma mesma execução, feita em 05/10/2026, e acompanham **um único pedido**, o pedido 1, com `correlationId = 8a366c4e-63d3-41a6-8da1-0474c9581bdf`. Para que a mensagem pudesse ser vista na fila antes de ser consumida, o `pagamento-service` foi parado antes da criação do pedido e religado depois.
 
-![Estoque antes](docs/print1-estoque-antes.png)
+**Ambiente em execução**
 
-**2. Criação do pedido** — resposta com status `AGUARDANDO_PAGAMENTO`
+![Containers em execução](docs/prints/00-ambiente-docker-compose.png)
 
-![Criar pedido](docs/print2-criar-pedido.png)
+**1. Criação do pedido** — o estoque do produto 1 (Notebook) começa com 10 unidades. O `POST /pedidos` responde **201 Created** com o header `X-Correlation-Id`, e o pedido fica com status `AGUARDANDO_PAGAMENTO`.
 
-**3. Estoque após a reserva** — quantidade caiu de 8 para 5 (reservados 3)
+![Criação do pedido](docs/prints/01-criacao-do-pedido.png)
 
-![Estoque depois](docs/print3-estoque-depois.png)
+**2. Reserva de estoque** — depois do pedido, o produto 1 passa de 10 para **8** unidades. O log do Estoque Service, filtrado pelo correlationId, registra a reserva feita pela chamada REST do Pedido Service.
 
-**4. Status final do pedido** — atualizado para `PAGO` após o evento assíncrono
+![Reserva de estoque](docs/prints/02-reserva-de-estoque.png)
 
-![Pedido pago](docs/print4-pedido-pago.png)
+**3. Publicação da mensagem** — o log do Pedido Service mostra a sequência *requisição recebida → pedido criado → evento publicado*. Com o Pagamento parado, a fila `pedido.criado` mostra 1 mensagem pronta e 0 consumidores.
 
-**5. Logs do Pedido Service** — publicação do evento e recebimento da confirmação de pagamento
+![Publicação da mensagem](docs/prints/03-publicacao-da-mensagem.png)
 
-![Logs pedido-service](docs/print5-logs-pedido.png)
+No painel do RabbitMQ, a fila `pedido.criado` mostra a mensagem com exchange `pedidos.exchange`, routing key `pedido.criado`, `correlation_id` e o payload JSON do evento:
 
-**6. Logs do Pagamento Service** — consumo do evento `pedido.criado` e publicação de `pagamento.processado`
+![Fila pedido.criado no RabbitMQ](docs/prints/04-rabbitmq-fila-pedido-criado.png)
 
-![Logs pagamento-service](docs/print6-logs-pagamento.png)
+**4. Processamento do pagamento** — quando o Pagamento Service volta, ele consome a mensagem pendente, aprova o pagamento, grava o resultado no banco `pagamento-db` e publica `pagamento.processado`. O Pedido Service recebe esse evento e muda o pedido 1 para **PAGO**. As filas ficam vazias.
+
+![Processamento do pagamento](docs/prints/05-processamento-do-pagamento.png)
+
+![Filas após o processamento](docs/prints/06-rabbitmq-filas-apos-pagamento.png)
 
 ---
 
@@ -254,14 +260,14 @@ O arquivo `docker-compose.yml` encontra-se na raiz deste repositório. Ele orque
 
 **Recuperação (Ao subir novamente o Pagamento Service):**
 1. **O processamento precisou ser repetido manualmente?** Não. Assim que o serviço iniciou, ele se conectou à fila e processou automaticamente o backlog de mensagens pendentes.
-2. **O Pedido Service precisou aguardar o Pagamento Service?** Não. Durante a indisponibilidade, o Pedido Service respondeu normalmente (200 OK) ao cliente. A finalização foi assíncrona.
+2. **O Pedido Service precisou aguardar o Pagamento Service?** Não. Durante a indisponibilidade, o Pedido Service respondeu normalmente (201 Created) ao cliente. A finalização foi assíncrona.
 3. **O que aconteceu com as mensagens enquanto o consumidor estava indisponível?** Permaneceram guardadas de forma segura no broker RabbitMQ na respectiva Queue, mantendo a durabilidade do dado.
 
 ### Escalabilidade (Etapa 10)
 
 1. **As mensagens foram distribuídas?** Sim. O RabbitMQ distribui as mensagens em Round-Robin entre as múltiplas instâncias conectadas à mesma fila.
 2. **Apenas uma instância processou cada mensagem?** Sim. Pelo padrão "Competing Consumers", o RabbitMQ entrega uma mensagem para apenas um consumidor por vez, evitando duplicação (duplo pagamento).
-3. **Quais características permitem escalar apenas esse serviço?** O **desacoplamento por mensageria** (ele só reage a eventos) e o fato de ser **stateless**. A nível de infraestrutura, o uso de `expose` em vez de `ports` no Docker Compose permitiu o scale sem conflito de portas.
+3. **Quais características permitem escalar apenas esse serviço?** O **desacoplamento por mensageria** (ele só reage a eventos) e o fato de ser **stateless**. A nível de infraestrutura, o serviço não publica nenhuma porta no host (não há `ports` no Docker Compose), o que permite o scale sem conflito de portas.
 4. **Em quais circunstâncias o Estoque Service também precisaria ser escalado?** Por atender chamadas HTTP síncronas no caminho crítico de criação do pedido, precisaria ser escalado em picos de acesso (ex: Black Friday), onde as requisições GET/PUT esgotem os recursos de CPU ou o limite de conexões do banco.
 
 ### Investigação de Incidente (Pedido #17 e Atualização Assíncrona)
