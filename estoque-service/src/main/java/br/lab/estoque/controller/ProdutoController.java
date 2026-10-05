@@ -3,7 +3,9 @@ package br.lab.estoque.controller;
 import br.lab.estoque.dto.MensagemResponse;
 import br.lab.estoque.dto.QuantidadeRequest;
 import br.lab.estoque.model.Produto;
+import br.lab.estoque.model.Reserva;
 import br.lab.estoque.repository.ProdutoRepository;
+import br.lab.estoque.repository.ReservaRepository;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,9 +24,11 @@ public class ProdutoController {
     public static final String CORRELATION_HEADER = "X-Correlation-Id";
 
     private final ProdutoRepository repository;
+    private final ReservaRepository reservaRepository;
 
-    public ProdutoController(ProdutoRepository repository) {
+    public ProdutoController(ProdutoRepository repository, ReservaRepository reservaRepository) {
         this.repository = repository;
+        this.reservaRepository = reservaRepository;
     }
 
     // Endpoint 1 - consultar todos os produtos
@@ -50,6 +54,12 @@ public class ProdutoController {
             @Valid @RequestBody QuantidadeRequest request,
             @RequestHeader(value = CORRELATION_HEADER, required = false) String correlationId) {
 
+        // Idempotencia: a mesma requisicao (mesmo correlationId) so baixa o estoque uma vez
+        if (correlationId != null && reservaRepository.findByCorrelationId(correlationId).isPresent()) {
+            log.info("correlationId={} Reserva ja processada - chamada repetida ignorada", correlationId);
+            return ResponseEntity.ok(new MensagemResponse("Estoque ja reservado"));
+        }
+
         if (!repository.existsById(id)) {
             log.warn("correlationId={} Produto {} inexistente", correlationId, id);
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -64,6 +74,9 @@ public class ProdutoController {
                     .body(new MensagemResponse("Estoque insuficiente"));
         }
 
+        if (correlationId != null) {
+            reservaRepository.save(new Reserva(correlationId, id, request.quantidade(), false));
+        }
         log.info("correlationId={} Produto {} reservado (quantidade={})",
                 correlationId, id, request.quantidade());
         return ResponseEntity.ok(new MensagemResponse("Estoque reservado"));
@@ -77,12 +90,38 @@ public class ProdutoController {
             @Valid @RequestBody QuantidadeRequest request,
             @RequestHeader(value = CORRELATION_HEADER, required = false) String correlationId) {
 
+        if (correlationId != null) {
+            return liberarReserva(id, request.quantidade(), correlationId);
+        }
         if (repository.liberar(id, request.quantidade()) == 0) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(new MensagemResponse("Produto inexistente"));
         }
         log.info("correlationId={} Reserva do produto {} liberada (quantidade={})",
                 correlationId, id, request.quantidade());
+        return ResponseEntity.ok(new MensagemResponse("Reserva liberada"));
+    }
+
+    /**
+     * Libera pela reserva registrada: so devolve o que foi de fato reservado, e uma vez so.
+     * Se a reserva nao existe (ex.: o Pedido desistiu por timeout antes de ela ser gravada),
+     * grava uma reserva ja liberada; assim uma reserva atrasada com o mesmo correlationId e ignorada.
+     */
+    private ResponseEntity<MensagemResponse> liberarReserva(Long id, int quantidade, String correlationId) {
+        Reserva reserva = reservaRepository.findByCorrelationId(correlationId).orElse(null);
+        if (reserva == null) {
+            reservaRepository.save(new Reserva(correlationId, id, quantidade, true));
+            log.info("correlationId={} Nenhuma reserva do produto {} para liberar", correlationId, id);
+            return ResponseEntity.ok(new MensagemResponse("Nenhuma reserva para liberar"));
+        }
+        if (reserva.isLiberada()) {
+            log.info("correlationId={} Reserva ja liberada - chamada repetida ignorada", correlationId);
+            return ResponseEntity.ok(new MensagemResponse("Reserva ja liberada"));
+        }
+        repository.liberar(reserva.getProdutoId(), reserva.getQuantidade());
+        reserva.liberar();
+        log.info("correlationId={} Reserva do produto {} liberada (quantidade={})",
+                correlationId, reserva.getProdutoId(), reserva.getQuantidade());
         return ResponseEntity.ok(new MensagemResponse("Reserva liberada"));
     }
 }

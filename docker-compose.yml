@@ -84,9 +84,7 @@ services:
 
   pagamento-service:
     build: ./pagamento-service
-    # Sem "ports": nenhuma porta fixa no host, o que permite --scale pagamento-service=2
-    expose:
-      - "8080"
+    # Sem "ports" (e sem servidor HTTP): nenhuma porta fixa no host, o que permite --scale pagamento-service=2
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://pagamento-db:5432/pagamento
       SPRING_DATASOURCE_USERNAME: pagamento
