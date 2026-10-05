@@ -191,50 +191,29 @@ O arquivo `docker-compose.yml` encontra-se na raiz deste repositório. Ele orque
 
 ## Parte 4 - Prints demonstrando o fluxo
 
-Abaixo estão os testes executados com `curl` e os respectivos logs extraídos com `docker compose logs`, comprovando todo o funcionamento do fluxo.
+**1. Estoque antes do pedido**
 
-1. **Criação do pedido**:
-```bash
-$ curl -X POST http://localhost:8080/pedidos \
-  -H "Content-Type: application/json" \
-  -d '{"produtoId": 1, "quantidade": 2}'
+![Estoque antes](docs/print1-estoque-antes.png)
 
-{
-  "id": 1,
-  "produtoId": 1,
-  "quantidade": 2,
-  "status": "AGUARDANDO_PAGAMENTO",
-  "correlationId": "cafec939-9018-4f47-8fee-379ee618ab50"
-}
-```
+**2. Criação do pedido** — resposta com status `AGUARDANDO_PAGAMENTO`
 
-2. **Reserva de estoque** (quantidade caiu de 10 para 8):
-```bash
-$ curl -X GET http://localhost:8081/produtos/1
+![Criar pedido](docs/print2-criar-pedido.png)
 
-{
-  "id": 1,
-  "nome": "Notebook",
-  "quantidade": 8
-}
-```
+**3. Estoque após a reserva** — quantidade caiu de 8 para 5 (reservados 3)
 
-3. **Publicação da mensagem e Processamento (Logs combinados)**:
-```text
-# === LOGS DO PEDIDO-SERVICE ===
-pedido-service-1  | 19:35:32.574 INFO  b.l.p.c.PedidoController - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Requisicao de pedido recebida: produto 1 quantidade 2
-pedido-service-1  | 19:35:33.054 INFO  b.l.p.s.PedidoService - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Pedido 1 criado
-pedido-service-1  | 19:35:33.070 INFO  b.l.p.s.PedidoService - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Evento publicado 1
+![Estoque depois](docs/print3-estoque-depois.png)
 
-# === LOGS DO PAGAMENTO-SERVICE ===
-pagamento-service-1  | 19:35:33.185 INFO  b.l.p.m.PedidoCriadoListener - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Evento pedido.criado recebido: pedido 1 produto 1 quantidade 2
-pagamento-service-1  | 19:35:34.531 INFO  b.l.p.s.PagamentoService - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Pagamento aprovado 1
-pagamento-service-1  | 19:35:34.697 INFO  b.l.p.s.PagamentoService - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Evento pagamento.processado publicado 1 (APROVADO)
+**4. Status final do pedido** — atualizado para `PAGO` após o evento assíncrono
 
-# === VOLTANDO AO PEDIDO-SERVICE (ATUALIZAÇÃO DE STATUS) ===
-pedido-service-1  | 19:35:34.720 INFO  b.l.p.m.PagamentoProcessadoListener - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Evento pagamento.processado recebido: pedido 1 status APROVADO
-pedido-service-1  | 19:35:34.770 INFO  b.l.p.s.PedidoService - correlationId=cafec939-9018-4f47-8fee-379ee618ab50 Pedido 1 atualizado para PAGO
-```
+![Pedido pago](docs/print4-pedido-pago.png)
+
+**5. Logs do Pedido Service** — publicação do evento e recebimento da confirmação de pagamento
+
+![Logs pedido-service](docs/print5-logs-pedido.png)
+
+**6. Logs do Pagamento Service** — consumo do evento `pedido.criado` e publicação de `pagamento.processado`
+
+![Logs pagamento-service](docs/print6-logs-pagamento.png)
 
 ---
 
