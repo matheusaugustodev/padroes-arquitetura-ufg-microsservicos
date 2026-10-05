@@ -1,8 +1,8 @@
 # Entrega - Laboratório Avaliativo Prático: Construindo uma Arquitetura de Microsserviços
 
 **Integrantes da Dupla:**
-- Aluno A: [Inserir Nome do Aluno A]
-- Aluno B: [Inserir Nome do Aluno B]
+- Aluno A: Matheus Augusto
+- Aluno B: Marcello Ronald
 
 ---
 
