@@ -11,6 +11,13 @@ Plataforma de e-commerce com 3 microsserviços (Java 17 + Spring Boot 3.3), Post
 
 Requisito: Docker Desktop (ou Docker Engine + Compose). Não é preciso ter Java/Maven instalados — o build acontece dentro do Docker.
 
+## Autores
+
+| Estudante | Matrícula |
+|---|---|
+| Matheus Augusto Ferreira Medeiros | 202305532 |
+| Marcello Ronald José da Silva | 202302618 |
+
 ## Subir
 
 ```bash
