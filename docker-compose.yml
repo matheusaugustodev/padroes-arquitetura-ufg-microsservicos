@@ -1,0 +1,106 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # painel: http://localhost:15672 (guest/guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  estoque-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: estoque
+      POSTGRES_USER: estoque
+      POSTGRES_PASSWORD: estoque
+    volumes:
+      - estoque-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U estoque -d estoque"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  pedido-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: pedido
+      POSTGRES_USER: pedido
+      POSTGRES_PASSWORD: pedido
+    volumes:
+      - pedido-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pedido -d pedido"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  pagamento-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: pagamento
+      POSTGRES_USER: pagamento
+      POSTGRES_PASSWORD: pagamento
+    volumes:
+      - pagamento-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pagamento -d pagamento"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  estoque-service:
+    build: ./estoque-service
+    ports:
+      - "8081:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://estoque-db:5432/estoque
+      SPRING_DATASOURCE_USERNAME: estoque
+      SPRING_DATASOURCE_PASSWORD: estoque
+    depends_on:
+      estoque-db:
+        condition: service_healthy
+
+  pedido-service:
+    build: ./pedido-service
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pedido-db:5432/pedido
+      SPRING_DATASOURCE_USERNAME: pedido
+      SPRING_DATASOURCE_PASSWORD: pedido
+      SPRING_RABBITMQ_HOST: rabbitmq
+      ESTOQUE_SERVICE_URL: http://estoque-service:8080
+    depends_on:
+      pedido-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      estoque-service:
+        condition: service_started
+
+  pagamento-service:
+    build: ./pagamento-service
+    # Sem "ports": nenhuma porta fixa no host, o que permite --scale pagamento-service=2
+    expose:
+      - "8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pagamento-db:5432/pagamento
+      SPRING_DATASOURCE_USERNAME: pagamento
+      SPRING_DATASOURCE_PASSWORD: pagamento
+      SPRING_RABBITMQ_HOST: rabbitmq
+      # Investigacao de incidente: descomente para fazer o pagamento do pedido 17 falhar
+      # SIMULACAO_FALHAR_PEDIDO_ID: "17"
+    depends_on:
+      pagamento-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  estoque-data:
+  pedido-data:
+  pagamento-data:
