@@ -1,5 +1,12 @@
 # microservices-lab
 
+## Autores
+
+| Estudante | Matrícula |
+|---|---|
+| Matheus Augusto Ferreira Medeiros | 202305532 |
+| Marcello Ronald José da Silva | 202302618 |
+
 Plataforma de e-commerce com 3 microsserviços (Java 17 + Spring Boot 3.3), PostgreSQL por serviço e RabbitMQ.
 
 | Serviço | Porta no host | Banco | Papel |
@@ -10,13 +17,6 @@ Plataforma de e-commerce com 3 microsserviços (Java 17 + Spring Boot 3.3), Post
 | rabbitmq | 5672 / 15672 | — | Painel: http://localhost:15672 (guest / guest) |
 
 Requisito: Docker Desktop (ou Docker Engine + Compose). Não é preciso ter Java/Maven instalados — o build acontece dentro do Docker.
-
-## Autores
-
-| Estudante | Matrícula |
-|---|---|
-| Matheus Augusto Ferreira Medeiros | 202305532 |
-| Marcello Ronald José da Silva | 202302618 |
 
 ## Subir
 
