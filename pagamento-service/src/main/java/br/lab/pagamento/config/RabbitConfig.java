@@ -12,6 +12,10 @@ import org.springframework.context.annotation.Configuration;
  * As declaracoes sao idempotentes: Pedido e Pagamento declaram a fila pedido.criado com os
  * MESMOS argumentos. Assim a fila existe (e guarda mensagens) mesmo que o Pagamento Service
  * nunca tenha sido iniciado.
+ *
+ * ATENCAO: esta classe e identica no pedido-service e no pagamento-service. Qualquer mudanca em
+ * nomes ou argumentos precisa ser feita nas DUAS copias; se divergirem, o servico que subir depois
+ * falha com PRECONDITION_FAILED ao declarar a fila.
  */
 @Configuration
 public class RabbitConfig {

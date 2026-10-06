@@ -127,15 +127,13 @@ public class PedidoService {
         } else {
             pedido.setStatus(StatusPedido.REJEITADO);
             log.info("correlationId={} Pedido {} atualizado para REJEITADO", evento.correlationId(), pedido.getId());
-            // Compensacao de negocio: pagamento recusado devolve o item ao estoque
-            try {
-                estoqueClient.liberar(pedido.getProdutoId(), pedido.getQuantidade(), evento.correlationId());
-                log.info("correlationId={} Estoque do pedido {} devolvido (pagamento rejeitado)",
-                        evento.correlationId(), pedido.getId());
-            } catch (RuntimeException e) {
-                log.error("correlationId={} Falha ao devolver estoque do pedido {}: {}",
-                        evento.correlationId(), pedido.getId(), e.getMessage());
-            }
+            // Compensacao de negocio: pagamento recusado devolve o item ao estoque.
+            // Se falhar, a excecao desfaz a transacao (pedido continua AGUARDANDO_PAGAMENTO) e o
+            // RabbitMQ entrega o evento de novo (3 tentativas, depois DLQ). Repetir e seguro porque
+            // o Estoque libera uma unica vez por correlationId.
+            estoqueClient.liberar(pedido.getProdutoId(), pedido.getQuantidade(), evento.correlationId());
+            log.info("correlationId={} Estoque do pedido {} devolvido (pagamento rejeitado)",
+                    evento.correlationId(), pedido.getId());
         }
     }
 }
